@@ -113,7 +113,14 @@ function Backup() {
   )
 }
 
-const socket = io(window.location.origin)
+const socket = io(window.location.origin, {
+  transports: ['websocket', 'polling'],
+  upgrade: true,
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionAttempts: Infinity,
+  timeout: 20000
+})
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
