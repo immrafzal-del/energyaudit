@@ -103,7 +103,7 @@ function ActiveFaultsBanner({ energyData }) {
 
     const v =energyData.voltage     ||0
     const i =energyData.current     ||0
-    const p =energyData.power       ||0
+    const pw=energyData.power       ||0
     const f =energyData.frequency   ||0
     const tp=energyData.temperature ||0
     const pf=energyData.powerFactor
@@ -117,7 +117,7 @@ function ActiveFaultsBanner({ energyData }) {
     if(i>0.001&&t.current?.max&&i>t.current.max)
       nf.push({type:'Overcurrent',severity:'critical',msg:`${i.toFixed(3)} A  >  ${t.current.max} A`,icon:'🔴'})
     if(p>0&&t.power?.max&&p>t.power.max)
-      nf.push({type:'Overload',severity:'critical',msg:`${p.toFixed(1)} W  >  ${t.power.max} W`,icon:'⚠'})
+      nf.push({type:'Overload',severity:'critical',msg:`${pw.toFixed(1)} W  >  ${t.power.max} W`,icon:'⚠'})
     if(f>1&&t.frequency?.max&&t.frequency?.min&&(f>t.frequency.max||f<t.frequency.min))
       nf.push({type:'Frequency',severity:'warning',msg:`${f.toFixed(2)} Hz  (limit: ${t.frequency.min}–${t.frequency.max} Hz)`,icon:'〜'})
     if(tp>0&&t.temperature?.max&&tp>t.temperature.max)
@@ -224,7 +224,7 @@ function Dashboard({ energyData, waveformData, historicalData, connected, latenc
 
   useEffect(()=>{
     const load=()=>{
-      try{const raw=localStorage.getItem('deviceThresholds');if(raw){const p=JSON.parse(raw);if(Array.isArray(p)&&p.length>0)setDevices(p)}}catch(_){}
+      try{const raw=localStorage.getItem('deviceThresholds');if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed)&&parsed.length>0)setDevices(parsed)}}catch(_){}
     }
     load(); const t=setInterval(load,2000); return()=>clearInterval(t)
   },[])
