@@ -1,0 +1,224 @@
+.analytics-page {
+  padding: 30px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.analytics-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.analytics-header p {
+  color: #b0b0b0;
+  font-size: 16px;
+}
+
+.time-range-selector {
+  display: flex;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(66, 165, 245, 0.2);
+}
+
+.time-range-selector button {
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #b0b0b0;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.time-range-selector button:hover {
+  color: #fff;
+  background: rgba(66, 165, 245, 0.1);
+}
+
+.time-range-selector button.active {
+  background: linear-gradient(135deg, #42a5f5 0%, #2196f3 100%);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(66, 165, 245, 0.4);
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.analytics-card {
+  background: linear-gradient(135deg, rgba(66, 165, 245, 0.05) 0%, rgba(26, 26, 46, 0.8) 100%);
+  border: 1px solid rgba(66, 165, 245, 0.2);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s;
+}
+
+.analytics-card.large {
+  grid-column: span 2;
+}
+
+.analytics-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(66, 165, 245, 0.3);
+  border-color: rgba(66, 165, 245, 0.4);
+}
+
+.analytics-card h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 20px;
+}
+
+.consumption-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.consumption-header h2 {
+  margin-bottom: 0;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.view-toggle button {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #b0b0b0;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.view-toggle button:hover {
+  color: #fff;
+  background: rgba(66, 165, 245, 0.1);
+}
+
+.view-toggle button.active {
+  background: linear-gradient(135deg, #42a5f5 0%, #2196f3 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(66, 165, 245, 0.4);
+}
+
+.stats-grid {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, rgba(66, 165, 245, 0.05) 0%, rgba(26, 26, 46, 0.8) 100%);
+  border: 1px solid rgba(66, 165, 245, 0.2);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(66, 165, 245, 0.3);
+}
+
+.stat-icon {
+  filter: drop-shadow(0 0 10px rgba(66, 165, 245, 0.5));
+}
+
+.stat-card h3 {
+  font-size: 13px;
+  color: #b0b0b0;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.stat-change {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.stat-change.positive {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.stat-change.negative {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+@media (max-width: 1200px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .analytics-card.large {
+    grid-column: span 1;
+  }
+  
+  .stats-grid {
+    grid-column: span 1;
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .analytics-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .time-range-selector {
+    width: 100%;
+  }
+  
+  .time-range-selector button {
+    flex: 1;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

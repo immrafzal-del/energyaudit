@@ -1,0 +1,240 @@
+.reports-page {
+  padding: 30px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.reports-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.reports-header p {
+  color: #8a9bb0;
+  font-size: 14px;
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+/* Builder card */
+.report-builder {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(66,165,245,0.15);
+  border-radius: 16px;
+  padding: 32px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #42a5f5;
+  margin-bottom: 14px;
+}
+
+/* Preset buttons */
+.preset-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.preset-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(66,165,245,0.25);
+  background: rgba(66,165,245,0.05);
+  color: #b0c4d8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preset-btn:hover {
+  border-color: rgba(66,165,245,0.5);
+  color: #fff;
+  background: rgba(66,165,245,0.12);
+}
+
+.preset-btn.active {
+  background: rgba(66,165,245,0.2);
+  border-color: #42a5f5;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(66,165,245,0.3);
+}
+
+/* Custom datetime range */
+.custom-range {
+  background: rgba(66,165,245,0.05);
+  border: 1px solid rgba(66,165,245,0.2);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.datetime-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.datetime-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.datetime-group label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a9bb0;
+}
+
+.datetime-group input[type="datetime-local"] {
+  background: rgba(15,20,35,0.8);
+  border: 1px solid rgba(66,165,245,0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #e0e8f0;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.datetime-group input[type="datetime-local"]:focus {
+  border-color: #42a5f5;
+}
+
+.datetime-sep {
+  color: #42a5f5;
+  font-size: 18px;
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+
+/* Period summary pill */
+.period-summary {
+  display: flex;
+  align-items: center;
+  background: rgba(66,165,245,0.07);
+  border: 1px solid rgba(66,165,245,0.15);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #8a9bb0;
+  margin-bottom: 0;
+}
+
+.period-summary strong {
+  color: #e0e8f0;
+}
+
+/* Sections preview */
+.sections-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.section-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.chip-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #42a5f5;
+  background: rgba(66,165,245,0.12);
+  border-radius: 5px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.chip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d0dcea;
+  margin-bottom: 3px;
+}
+
+.chip-desc {
+  font-size: 11px;
+  color: #6a7f96;
+  line-height: 1.4;
+}
+
+/* Error */
+.report-error {
+  background: rgba(211,47,47,0.1);
+  border: 1px solid rgba(211,47,47,0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #ef5350;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* Generate button */
+.btn-generate-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #42a5f5 0%, #1976d2 100%);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s;
+  box-shadow: 0 4px 20px rgba(66,165,245,0.35);
+  margin-top: 4px;
+}
+
+.btn-generate-main:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(66,165,245,0.5);
+}
+
+.btn-generate-main:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin-right: 10px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
