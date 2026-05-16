@@ -98,31 +98,31 @@ function ActiveFaultsBanner({ energyData }) {
   useEffect(()=>{
     const dev=devices[selIdx]
     if(!dev) return
-    const t=dev.thresholds
-    if(!t) return
+    const thr=dev.thresholds
+    if(!thr) return
 
     const v =energyData.voltage     ||0
-    const i =energyData.current     ||0
+    const cur=energyData.current     ||0
     const pw=energyData.power       ||0
-    const f =energyData.frequency   ||0
+    const freq=energyData.frequency   ||0
     const tp=energyData.temperature ||0
     const pf=energyData.powerFactor
 
     const nf=[]
     // Only check when we have actual readings (>0)
     if(v>1){
-      if(t.voltage?.max&&v>t.voltage.max) nf.push({type:'Overvoltage', severity:'critical',msg:`${v.toFixed(1)} V  >  ${t.voltage.max} V`,icon:'⚡'})
-      if(t.voltage?.min&&v<t.voltage.min) nf.push({type:'Undervoltage',severity:'warning', msg:`${v.toFixed(1)} V  <  ${t.voltage.min} V`,icon:'⬇'})
+      if(thr.voltage?.max&&v>t.voltage.max) nf.push({type:'Overvoltage', severity:'critical',msg:`${v.toFixed(1)} V  >  ${t.voltage.max} V`,icon:'⚡'})
+      if(thr.voltage?.min&&v<t.voltage.min) nf.push({type:'Undervoltage',severity:'warning', msg:`${v.toFixed(1)} V  <  ${t.voltage.min} V`,icon:'⬇'})
     }
-    if(i>0.001&&t.current?.max&&i>t.current.max)
-      nf.push({type:'Overcurrent',severity:'critical',msg:`${i.toFixed(3)} A  >  ${t.current.max} A`,icon:'🔴'})
-    if(pw>0&&t.power?.max&&pw>t.power.max)
+    if(cur>0.001&&thr.current?.max&&cur>t.current.max)
+      nf.push({type:'Overcurrent',severity:'critical',msg:`${cur.toFixed(3)} A  >  ${t.current.max} A`,icon:'🔴'})
+    if(pw>0&&thr.power?.max&&pw>t.power.max)
       nf.push({type:'Overload',severity:'critical',msg:`${pw.toFixed(1)} W  >  ${t.power.max} W`,icon:'⚠'})
-    if(f>1&&t.frequency?.max&&t.frequency?.min&&(f>t.frequency.max||f<t.frequency.min))
-      nf.push({type:'Frequency',severity:'warning',msg:`${f.toFixed(2)} Hz  (limit: ${t.frequency.min}–${t.frequency.max} Hz)`,icon:'〜'})
-    if(tp>0&&t.temperature?.max&&tp>t.temperature.max)
+    if(freq>1&&thr.frequency?.max&&thr.frequency?.min&&(freq>t.frequency.max||freq<t.frequency.min))
+      nf.push({type:'Frequency',severity:'warning',msg:`${freq.toFixed(2)} Hz  (limit: ${t.frequency.min}–${t.frequency.max} Hz)`,icon:'〜'})
+    if(tp>0&&thr.temperature?.max&&tp>t.temperature.max)
       nf.push({type:'High Temp',severity:'warning',msg:`${tp.toFixed(1)} °C  >  ${t.temperature.max} °C`,icon:'🌡'})
-    if(pf!=null&&pf<0.80&&i>0.05)
+    if(pf!=null&&pf<0.80&&cur>0.05)
       nf.push({type:'Low PF',severity:'warning',msg:`PF = ${pf.toFixed(3)}  <  0.80`,icon:'📉'})
 
     // Save newly triggered faults to server DB so FaultLogs page shows them
@@ -188,11 +188,11 @@ function ActiveFaultsBanner({ energyData }) {
       {/* Threshold reference row */}
       {t&&(
         <div className="threshold-ref-row">
-          <span>V: {t.voltage?.min}–{t.voltage?.max} V</span>
-          <span>I: 0–{t.current?.max} A</span>
-          <span>P: 0–{t.power?.max} W</span>
-          <span>f: {t.frequency?.min}–{t.frequency?.max} Hz</span>
-          <span>T: 0–{t.temperature?.max} °C</span>
+          <span>V: {thr.voltage?.min}–{thr.voltage?.max} V</span>
+          <span>I: 0–{thr.current?.max} A</span>
+          <span>P: 0–{thr.power?.max} W</span>
+          <span>f: {thr.frequency?.min}–{thr.frequency?.max} Hz</span>
+          <span>T: 0–{thr.temperature?.max} °C</span>
           <span>PF: &gt;0.80</span>
         </div>
       )}
@@ -237,11 +237,11 @@ function Dashboard({ energyData, waveformData, historicalData, connected, latenc
   const t=devices[selIdx]?.thresholds
 
   // Per-gauge fault/warn state based on active device thresholds
-  const vFault=!!(t&&energyData.voltage>1&&(energyData.voltage>t.voltage?.max||energyData.voltage<t.voltage?.min))
-  const iFault=!!(t&&energyData.current>0.001&&energyData.current>t.current?.max)
-  const pFault=!!(t&&energyData.power>0&&energyData.power>t.power?.max)
-  const fFault=!!(t&&energyData.frequency>1&&(energyData.frequency>t.frequency?.max||energyData.frequency<t.frequency?.min))
-  const tFault=!!(t&&energyData.temperature>0&&energyData.temperature>t.temperature?.max)
+  const vFault=!!(t&&energyData.voltage>1&&(energyData.voltage>thr.voltage?.max||energyData.voltage<thr.voltage?.min))
+  const iFault=!!(t&&energyData.current>0.001&&energyData.current>thr.current?.max)
+  const pFault=!!(t&&energyData.power>0&&energyData.power>thr.power?.max)
+  const fFault=!!(t&&energyData.frequency>1&&(energyData.frequency>thr.frequency?.max||energyData.frequency<thr.frequency?.min))
+  const tFault=!!(t&&energyData.temperature>0&&energyData.temperature>thr.temperature?.max)
   const pfWarn=!!(pfVal!=null&&pfVal<0.80)
 
   return (
