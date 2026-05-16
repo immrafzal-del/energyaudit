@@ -8,7 +8,6 @@ import History from './pages/History'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
-import FaultAlert from './components/common/FaultAlert'
 import './App.css'
 
 // ── Calibration page ────────────────────────────────────────────────────────
@@ -369,9 +368,6 @@ function App() {
       <div className="main-content">
         {renderPage()}
       </div>
-      {faults.length > 0 && faults[0] && (
-        <FaultAlert fault={faults[0]} onClose={() => setFaults(prev => prev.slice(1))} />
-      )}
     </div>
   )
 }
