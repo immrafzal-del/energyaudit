@@ -280,8 +280,8 @@ export function DualOscilloscope({
 
 // ── FFTOscilloscope ───────────────────────────────────────────────────────────
 function buildSpectrum(pf, f0) {
-  const p = Math.min(1, Math.max(0.5, pf > 0 ? pf : 0.95))
-  const k = (1-p)/0.3
+  const pfClamped = Math.min(1, Math.max(0.5, pf > 0 ? pf : 0.95))
+  const k = (1-pfClamped)/0.3
   const bins = [
     {n:1,freq:f0,   mag:1.00,       isFund:true },
     {n:2,freq:f0*2, mag:0.008,      isFund:false},
