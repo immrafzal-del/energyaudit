@@ -77,7 +77,7 @@ function Analytics() {
     setError(null)
     try {
       const res  = await fetch(
-        `/api/energy/analytics?range=${range}&hardwareOnly=true`,
+        `/api/energy/analytics?range=${range}`,
         { signal: abortRef.current.signal }
       )
       if (!res.ok) throw new Error(`Server error ${res.status}`)
@@ -117,7 +117,7 @@ function Analytics() {
   const loadConsumption = useCallback(async () => {
     setLoadingCons(true)
     try {
-      const res  = await fetch('/api/energy/consumption/daily?hardwareOnly=true')
+      const res  = await fetch('/api/energy/consumption/daily')
       if (!res.ok) throw new Error(`${res.status}`)
       const data = await res.json()
       if (Array.isArray(data) && data.length > 0) {
@@ -140,11 +140,11 @@ function Analytics() {
     loadAnalytics(timeRange)
     loadConsumption()
 
-    // Refresh every 15 seconds (was 10s — less aggressive = faster UI)
+    // Refresh every 60 seconds — gives time to read the data
     intervalRef.current = setInterval(() => {
       loadAnalytics(timeRange)
       loadConsumption()
-    }, 15000)
+    }, 60000)
 
     return () => {
       clearInterval(intervalRef.current)
