@@ -131,7 +131,11 @@ function FaultLogs() {
           )}
           {/* Manual refresh */}
           <button
-            onClick={fetchFaults}
+            onClick={() => {
+              clearInterval(intervalRef.current)
+              fetchFaults()
+              intervalRef.current = setInterval(fetchFaults, 8000)
+            }}
             disabled={loading}
             style={{
               padding:'8px 14px', borderRadius:8,

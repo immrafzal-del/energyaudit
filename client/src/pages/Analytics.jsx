@@ -92,7 +92,10 @@ function Analytics() {
         const formatted = downsampled.map(d => ({
           ...d,
           time: d.timestamp
-            ? format(new Date(d.timestamp), range === '24h' ? 'HH:mm' : 'MMM dd HH:mm')
+            ? new Date(d.timestamp).toLocaleTimeString('en-PK', 
+                range === '24h' 
+                  ? {hour:'2-digit', minute:'2-digit', hour12:false}
+                  : {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false})
             : d.time || '',
           power:   typeof d.power   === 'number' ? +d.power.toFixed(1)   : 0,
           voltage: typeof d.voltage === 'number' ? +d.voltage.toFixed(1) : 0,
