@@ -64,15 +64,18 @@ function drawSmooth(ctx, samples, color, W, midY, halfH) {
 // ── DualOscilloscope ──────────────────────────────────────────────────────────
 export function DualOscilloscope({
   voltage, current, frequency, powerFactor,
-  voltageBuffer, currentBuffer   // real ADC arrays from server (in V and A)
+  voltageBuffer, currentBuffer
 }) {
-  const canvasRef  = useRef(null)
-  const rafRef     = useRef(null)
-  const sizeRef    = useRef({ w: 0, h: 0 })
+  const vCanvasRef = useRef(null)
+  const iCanvasRef = useRef(null)
+  const vRafRef    = useRef(null)
+  const iRafRef    = useRef(null)
+  const vSizeRef   = useRef({ w: 0, h: 0 })
+  const iSizeRef   = useRef({ w: 0, h: 0 })
 
-  // CSV recording state
-  const [recording,  setRecording]  = useState(false)
-  const [recCount,   setRecCount]   = useState(0)
+  // CSV recording
+  const [recording, setRecording] = useState(false)
+  const [recCount,  setRecCount]  = useState(0)
   const recRef = useRef([])
 
   const phiDeg = useMemo(() => {
@@ -80,21 +83,21 @@ export function DualOscilloscope({
     return pf > 0 ? +(Math.acos(pf) * 180 / Math.PI).toFixed(1) : 0
   }, [powerFactor])
 
-  // Normalise real ADC waveform buffers to ±1 range for drawing
-  const normV   = useMemo(() => adcToNorm(voltageBuffer), [voltageBuffer])
-  const normI   = useMemo(() => adcToNorm(currentBuffer), [currentBuffer])
-  const hasReal = normV.length >= 10
+  const normV = useMemo(() => adcToNorm(voltageBuffer), [voltageBuffer])
+  const normI = useMemo(() => adcToNorm(currentBuffer), [currentBuffer])
+  const hasRealV = normV.length >= 10
+  const hasRealI = normI.length >= 10
 
-  // CSV: accumulate samples while recording
+  // CSV accumulate
   useEffect(() => {
     if (!recording || !voltageBuffer || voltageBuffer.length < 2) return
     const ts = new Date().toISOString()
-    voltageBuffer.forEach((v, i) => {
+    voltageBuffer.forEach((vv, idx) => {
       recRef.current.push({
-        n: recRef.current.length, ts, idx: i,
-        v_V: v.toFixed(4),
-        i_A: currentBuffer && currentBuffer[i] != null
-          ? currentBuffer[i].toFixed(6) : 'N/A'
+        n: recRef.current.length, ts, idx,
+        v_V: vv.toFixed(4),
+        i_A: currentBuffer && currentBuffer[idx] != null
+          ? currentBuffer[idx].toFixed(6) : 'N/A'
       })
     })
     setRecCount(recRef.current.length)
@@ -107,176 +110,265 @@ export function DualOscilloscope({
       ...recRef.current.map(r => `${r.n},${r.ts},${r.idx},${r.v_V},${r.i_A}`)]
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url
-    a.download = `waveform-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`
-    a.click(); URL.revokeObjectURL(url); recRef.current = []
+    const link = document.createElement('a')
+    link.href     = url
+    link.download = `waveform-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`
+    link.click(); URL.revokeObjectURL(url); recRef.current = []
   }
 
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current; if (!canvas) return
+  // ── Draw VOLTAGE canvas ────────────────────────────────────────────────────
+  const drawV = useCallback(() => {
+    const canvas = vCanvasRef.current; if (!canvas) return
     const { w: W, h: H } = getCanvasSize(canvas); if (W < 10 || H < 10) return
-
-    if (sizeRef.current.w !== W || sizeRef.current.h !== H) {
+    if (vSizeRef.current.w !== W || vSizeRef.current.h !== H) {
       const dpr = window.devicePixelRatio || 1
       canvas.width  = W * dpr; canvas.height = H * dpr
       canvas.getContext('2d').scale(dpr, dpr)
-      sizeRef.current = { w: W, h: H }
+      vSizeRef.current = { w: W, h: H }
     }
-
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#050a14'; ctx.fillRect(0, 0, W, H)
 
     // Grid
-    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(66,165,245,0.07)'
-    for (let i = 0; i <= 10; i++) {
-      ctx.beginPath(); ctx.moveTo(0, H/10*i); ctx.lineTo(W, H/10*i); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(W/10*i, 0); ctx.lineTo(W/10*i, H); ctx.stroke()
+    ctx.strokeStyle = 'rgba(66,165,245,0.07)'; ctx.lineWidth = 1
+    for (let gi = 0; gi <= 10; gi++) {
+      ctx.beginPath(); ctx.moveTo(0, H/10*gi); ctx.lineTo(W, H/10*gi); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(W/10*gi, 0); ctx.lineTo(W/10*gi, H); ctx.stroke()
     }
-    // Centre dashed lines for both channels
-    ctx.strokeStyle = 'rgba(66,165,245,0.2)'; ctx.lineWidth = 1.5; ctx.setLineDash([6,4])
-    ctx.beginPath(); ctx.moveTo(0, H*0.25); ctx.lineTo(W, H*0.25); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(0, H*0.75); ctx.lineTo(W, H*0.75); ctx.stroke()
+    ctx.strokeStyle = 'rgba(66,165,245,0.25)'; ctx.lineWidth = 1.2
+    ctx.setLineDash([6, 4])
+    ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke()
     ctx.setLineDash([])
-    // Divider
-    ctx.strokeStyle = 'rgba(66,165,245,0.12)'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(0, H*0.5); ctx.lineTo(W, H*0.5); ctx.stroke()
 
-    const hasSignal = voltage > 1 || current > 0.01
-    if (!hasSignal) {
+    if (!voltage || voltage < 1) {
       ctx.fillStyle = 'rgba(100,181,246,0.5)'
-      ctx.font = `bold ${Math.max(14, W*0.025)}px Arial`
+      ctx.font = `bold ${Math.max(13, W*0.022)}px Arial`
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('NO SIGNAL — Connect Hardware', W/2, H/2)
-      rafRef.current = requestAnimationFrame(draw); return
+      ctx.fillText('NO VOLTAGE SIGNAL', W/2, H/2)
+      vRafRef.current = requestAnimationFrame(drawV); return
     }
 
-    const vHalfH = H * 0.22
-    const iHalfH = H * 0.22
     const vPeak  = voltage * Math.SQRT2
-    const iPeak  = current * Math.SQRT2
+    const midY   = H / 2
+    const halfH  = H * 0.44
 
-    if (hasReal) {
-      // Real ADC samples — Catmull-Rom smooth, fixed axis scale
+    if (hasRealV) {
       const vScale = Math.min(1, vPeak / V_FULL_SCALE)
-      const iScale = current > 0.001 ? Math.min(1, iPeak / I_FULL_SCALE) : 0
-      drawSmooth(ctx, normV.map(s => s * vScale), '#42a5f5', W, H*0.25, vHalfH)
-      if (normI.length >= 10 && current > 0.001)
-        drawSmooth(ctx, normI.map(s => s * iScale), '#66bb6a', W, H*0.75, iHalfH)
-      else {
-        ctx.fillStyle = 'rgba(102,187,106,0.4)'
-        ctx.font = `bold ${Math.max(11, W*0.018)}px Arial`
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText('I: No signal — Check ACS712 +5V & A1', W/2, H*0.75)
-      }
+      drawSmooth(ctx, normV.map(s => s * vScale), '#42a5f5', W, midY, halfH)
     } else {
-      // Triggered stationary sine (simulation mode)
       const CYCLES = 3, N = 400
-      const phi    = Math.acos(Math.min(1, Math.max(-1, powerFactor > 0 ? powerFactor : 1)))
       const vScale = Math.min(1, vPeak / V_FULL_SCALE)
-      const iScale = Math.min(1, iPeak / I_FULL_SCALE)
-
       const vSamples = Array.from({ length: N }, (_, k) =>
         vScale * Math.sin(2 * Math.PI * CYCLES * k / N))
-      const iSamples = Array.from({ length: N }, (_, k) =>
-        iScale * Math.sin(2 * Math.PI * CYCLES * k / N - phi))
-
-      drawSmooth(ctx, vSamples, '#42a5f5', W, H*0.25, vHalfH)
-      drawSmooth(ctx, iSamples, '#66bb6a', W, H*0.75, iHalfH)
+      drawSmooth(ctx, vSamples, '#42a5f5', W, midY, halfH)
     }
 
-    // Peak dotted reference lines
-    const vPeakFrac = Math.min(1, vPeak / V_FULL_SCALE)
-    const iPeakFrac = Math.min(1, iPeak / I_FULL_SCALE)
-    ctx.strokeStyle = 'rgba(66,165,245,0.15)'; ctx.lineWidth = 0.8; ctx.setLineDash([3,6])
-    ctx.beginPath(); ctx.moveTo(0, H*0.25 - vPeakFrac*vHalfH); ctx.lineTo(W, H*0.25 - vPeakFrac*vHalfH); ctx.stroke()
-    ctx.strokeStyle = 'rgba(102,187,106,0.15)'
-    ctx.beginPath(); ctx.moveTo(0, H*0.75 - iPeakFrac*iHalfH); ctx.lineTo(W, H*0.75 - iPeakFrac*iHalfH); ctx.stroke()
+    // Info labels
+    const fs = Math.max(10, Math.min(13, W * 0.018))
+    ctx.font = `bold ${fs}px Arial`; ctx.textBaseline = 'top'
+    ctx.fillStyle = '#42a5f5'; ctx.textAlign = 'left'
+    ctx.fillText(`V_rms = ${voltage.toFixed(1)} V     V_peak = ${vPeak.toFixed(1)} V     f = ${frequency || 50} Hz`, 8, 6)
+    ctx.fillStyle = '#ffb74d'; ctx.textAlign = 'right'
+    ctx.fillText(`φ = ${phiDeg}°   PF = ${powerFactor > 0 ? powerFactor.toFixed(3) : '—'}`, W - 6, 6)
+    ctx.fillStyle = hasRealV ? 'rgba(76,175,80,0.8)' : 'rgba(255,183,77,0.7)'
+    ctx.font = `bold ${Math.max(9, fs-2)}px Arial`; ctx.textAlign = 'right'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(hasRealV ? '● REAL' : '● TRIGGERED', W - 6, H - 6)
+
+    vRafRef.current = requestAnimationFrame(drawV)
+  }, [voltage, frequency, powerFactor, phiDeg, hasRealV, normV])
+
+  // ── Draw CURRENT canvas ────────────────────────────────────────────────────
+  // AMPLIFIED scale: uses actual peak of the current signal so even tiny
+  // currents (0.01A) fill the full canvas height visibly
+  const drawI = useCallback(() => {
+    const canvas = iCanvasRef.current; if (!canvas) return
+    const { w: W, h: H } = getCanvasSize(canvas); if (W < 10 || H < 10) return
+    if (iSizeRef.current.w !== W || iSizeRef.current.h !== H) {
+      const dpr = window.devicePixelRatio || 1
+      canvas.width  = W * dpr; canvas.height = H * dpr
+      canvas.getContext('2d').scale(dpr, dpr)
+      iSizeRef.current = { w: W, h: H }
+    }
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#050a14'; ctx.fillRect(0, 0, W, H)
+
+    // Grid
+    ctx.strokeStyle = 'rgba(102,187,106,0.07)'; ctx.lineWidth = 1
+    for (let gi = 0; gi <= 10; gi++) {
+      ctx.beginPath(); ctx.moveTo(0, H/10*gi); ctx.lineTo(W, H/10*gi); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(W/10*gi, 0); ctx.lineTo(W/10*gi, H); ctx.stroke()
+    }
+    ctx.strokeStyle = 'rgba(102,187,106,0.25)'; ctx.lineWidth = 1.2
+    ctx.setLineDash([6, 4])
+    ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke()
     ctx.setLineDash([])
 
-    // Labels
-    const fs = Math.max(10, Math.min(13, W*0.018))
+    if (!current || current < 0.001) {
+      ctx.fillStyle = 'rgba(102,187,106,0.5)'
+      ctx.font = `bold ${Math.max(13, W*0.022)}px Arial`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('NO CURRENT SIGNAL — check ACS712 +5V & A1', W/2, H/2)
+      iRafRef.current = requestAnimationFrame(drawI); return
+    }
+
+    const iPeak = current * Math.SQRT2
+    const midY  = H / 2
+    // Reduced Y scale — waveform occupies ~44% of canvas height
+    // Keeps amplitude visually proportional to actual current magnitude
+    const halfH = H * 0.22
+
+    if (hasRealI) {
+      // normI is already ±1 normalised — always fills the screen
+      drawSmooth(ctx, normI, '#66bb6a', W, midY, halfH)
+    } else {
+      const CYCLES = 3, N = 400
+      const iPhi  = Math.acos(Math.min(1, Math.max(-1, powerFactor > 0 ? powerFactor : 1)))
+      const iSamples = Array.from({ length: N }, (_, k) =>
+        Math.sin(2 * Math.PI * CYCLES * k / N - iPhi))
+      drawSmooth(ctx, iSamples, '#66bb6a', W, midY, halfH)
+    }
+
+    // Info labels — show REAL amplitude values clearly
+    const fs = Math.max(10, Math.min(13, W * 0.018))
     ctx.font = `bold ${fs}px Arial`; ctx.textBaseline = 'top'; ctx.textAlign = 'left'
-    ctx.fillStyle = '#42a5f5'
-    ctx.fillText(`V: ${voltage>0?voltage.toFixed(1):'—'} V rms  peak ${vPeak>0?vPeak.toFixed(0):'—'} V`, 8, 6)
     ctx.fillStyle = '#66bb6a'
-    ctx.fillText(`I: ${current>0.001?current.toFixed(3):'—'} A rms  peak ${iPeak>0.001?iPeak.toFixed(3):'—'} A`, 8, H/2+6)
-    ctx.fillStyle = '#ffb74d'; ctx.textAlign = 'right'
-    ctx.fillText(`φ=${phiDeg}°  PF=${powerFactor>0?powerFactor.toFixed(3):'—'}`, W-6, 6)
-    ctx.fillStyle = 'rgba(66,165,245,0.35)'; ctx.font = `${Math.max(8,fs-2)}px Arial`; ctx.textAlign = 'right'
-    ctx.fillText(`Scale ±${V_FULL_SCALE}V`, W-6, H*0.25-13)
-    ctx.fillStyle = 'rgba(102,187,106,0.35)'
-    ctx.fillText(`Scale ±${I_FULL_SCALE}A`, W-6, H*0.75-13)
-    ctx.fillStyle = hasReal ? 'rgba(76,175,80,0.7)' : 'rgba(255,183,77,0.7)'
-    ctx.font = `bold ${Math.max(9,fs-2)}px Arial`; ctx.textAlign = 'right'
-    ctx.fillText(hasReal ? '● REAL' : '● TRIGGERED', W-6, H-16)
+    ctx.fillText(`I_rms = ${current.toFixed(4)} A     I_peak = ${iPeak.toFixed(4)} A     ACS712-30A  66 mV/A`, 8, 6)
+    // Scale annotation: tells user the actual range displayed
+    ctx.fillStyle = 'rgba(102,187,106,0.55)'; ctx.textAlign = 'right'
+    ctx.font = `${Math.max(9, fs-2)}px Arial`
+    ctx.fillText(`Auto-scale ±${iPeak.toFixed(4)} A (full screen)`, W - 6, 6)
+    ctx.fillStyle = hasRealI ? 'rgba(76,175,80,0.8)' : 'rgba(255,183,77,0.7)'
+    ctx.font = `bold ${Math.max(9, fs-2)}px Arial`
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(hasRealI ? '● REAL  amplified scale' : '● TRIGGERED', W - 6, H - 6)
 
-    rafRef.current = requestAnimationFrame(draw)
-  }, [voltage, current, powerFactor, phiDeg, hasReal, normV, normI])
+    // Y-axis scale labels on every grid division
+    // Each division = iPeak / 5 amps  (10 divisions total, ±5 divisions from centre)
+    const divCount = 5          // divisions above and below zero
+    const ampsPerDiv = iPeak / divCount
+    ctx.font = `${Math.max(8, fs-2)}px 'Courier New',monospace`
+    ctx.textAlign = 'right'
+    for (let div = -divCount; div <= divCount; div++) {
+      const yPos   = midY - (div / divCount) * halfH
+      const aValue = ampsPerDiv * div
+      // highlight 0A line
+      ctx.fillStyle = div === 0
+        ? 'rgba(102,187,106,0.85)'
+        : 'rgba(102,187,106,0.40)'
+      ctx.textBaseline = 'middle'
+      // only label every other division to avoid crowding
+      if (div % 1 === 0) {
+        const label = div === 0 ? '0 A' : `${aValue >= 0 ? '+' : ''}${aValue.toFixed(3)} A`
+        ctx.fillText(label, W - 6, yPos)
+      }
+    }
+
+    // Box behind labels so they are readable over the waveform
+    // (drawn before labels — we redraw labels on top)
+    // Peak annotation lines
+    ctx.strokeStyle = 'rgba(102,187,106,0.18)'
+    ctx.lineWidth = 0.7; ctx.setLineDash([3, 5])
+    ctx.beginPath(); ctx.moveTo(0, midY - halfH); ctx.lineTo(W - 60, midY - halfH); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, midY + halfH); ctx.lineTo(W - 60, midY + halfH); ctx.stroke()
+    ctx.setLineDash([])
+
+    iRafRef.current = requestAnimationFrame(drawI)
+  }, [current, powerFactor, hasRealI, normI])
 
   useEffect(() => {
-    rafRef.current = requestAnimationFrame(draw)
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
-  }, [draw])
+    vRafRef.current = requestAnimationFrame(drawV)
+    return () => { if (vRafRef.current) cancelAnimationFrame(vRafRef.current) }
+  }, [drawV])
 
   useEffect(() => {
-    const canvas = canvasRef.current; if (!canvas) return
-    const ro = new ResizeObserver(() => { sizeRef.current = { w: 0, h: 0 } })
-    ro.observe(canvas.parentElement || canvas); return () => ro.disconnect()
+    iRafRef.current = requestAnimationFrame(drawI)
+    return () => { if (iRafRef.current) cancelAnimationFrame(iRafRef.current) }
+  }, [drawI])
+
+  useEffect(() => {
+    const roV = new ResizeObserver(() => { vSizeRef.current = { w: 0, h: 0 } })
+    const roI = new ResizeObserver(() => { iSizeRef.current = { w: 0, h: 0 } })
+    if (vCanvasRef.current?.parentElement) roV.observe(vCanvasRef.current.parentElement)
+    if (iCanvasRef.current?.parentElement) roI.observe(iCanvasRef.current.parentElement)
+    return () => { roV.disconnect(); roI.disconnect() }
   }, [])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', display:'flex', flexDirection:'column' }}>
-      {/* CSV Record button — same style as original icon buttons */}
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 0', flexShrink:0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', height: '100%' }}>
+
+      {/* CSV toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         {!recording
           ? <button onClick={startRec} style={{
-              display:'flex', alignItems:'center', gap:6,
-              padding:'5px 14px', borderRadius:7,
-              background:'rgba(239,83,80,0.12)', color:'#ef5350',
-              border:'1px solid rgba(239,83,80,0.4)', cursor:'pointer',
-              fontFamily:'Courier New,monospace', fontWeight:700, fontSize:12
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 14px', borderRadius: 7,
+              background: 'rgba(239,83,80,0.12)', color: '#ef5350',
+              border: '1px solid rgba(239,83,80,0.4)', cursor: 'pointer',
+              fontFamily: 'Courier New,monospace', fontWeight: 700, fontSize: 12
             }}>
-              <span style={{fontSize:16}}>⏺</span> Record CSV
+              <span style={{ fontSize: 16 }}>&#9210;</span> Record CSV
             </button>
           : <button onClick={stopDownload} style={{
-              display:'flex', alignItems:'center', gap:6,
-              padding:'5px 14px', borderRadius:7,
-              background:'rgba(76,175,80,0.12)', color:'#4caf50',
-              border:'1px solid rgba(76,175,80,0.4)', cursor:'pointer',
-              fontFamily:'Courier New,monospace', fontWeight:700, fontSize:12,
-              animation:'blink 1s step-end infinite'
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 14px', borderRadius: 7,
+              background: 'rgba(76,175,80,0.12)', color: '#4caf50',
+              border: '1px solid rgba(76,175,80,0.4)', cursor: 'pointer',
+              fontFamily: 'Courier New,monospace', fontWeight: 700, fontSize: 12,
+              animation: 'blink 1s step-end infinite'
             }}>
-              <span style={{fontSize:16}}>⏹</span> Stop &amp; Download ({recCount} pts)
+              <span style={{ fontSize: 16 }}>&#9209;</span> Stop &amp; Download ({recCount} pts)
             </button>
         }
-        <span style={{
-          fontFamily:'Courier New,monospace', fontSize:11, color:'#546e7a'
-        }}>
-          {hasReal
-            ? <span style={{color:'#4caf50'}}>● Hardware — {normV.length} V samples</span>
-            : <span style={{color:'#ff9800'}}>● Simulation mode</span>}
+        <span style={{ fontFamily: 'Courier New,monospace', fontSize: 11, color: '#546e7a' }}>
+          {hasRealV
+            ? <span style={{ color: '#4caf50' }}>&#9679; Hardware &mdash; {normV.length} samples/packet</span>
+            : <span style={{ color: '#ff9800' }}>&#9679; Simulation mode</span>}
         </span>
       </div>
 
-      <div className="oscilloscope dual" style={{ flex:1, position:'relative' }}>
-        <canvas ref={canvasRef} style={{ width:'100%', height:'100%', display:'block' }} />
-        <div className="osc-legend">
-          <span style={{ color:'#42a5f5' }}>── Voltage</span>
-          <span style={{ color:'#66bb6a' }}>── Current</span>
-          <span style={{ color:'#ffb74d' }}>φ = {phiDeg}°</span>
+      {/* VOLTAGE oscilloscope */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative',
+                    background: '#050a14', borderRadius: 10,
+                    border: '1.5px solid rgba(66,165,245,0.22)', overflow: 'hidden' }}>
+        <canvas ref={vCanvasRef} style={{ width: '100%', height: '100%', display: 'block' }}/>
+        <div style={{ position: 'absolute', bottom: 8, left: 10,
+                      display: 'flex', gap: 14, fontSize: 11,
+                      fontFamily: 'Courier New,monospace', fontWeight: 600,
+                      background: 'rgba(5,10,20,0.75)', padding: '3px 10px', borderRadius: 6 }}>
+          <span style={{ color: '#42a5f5' }}>&#8212;&#8212; Voltage</span>
+          <span style={{ color: '#ffb74d' }}>&phi; = {phiDeg}&deg;</span>
           {voltage > 1
-            ? <span style={{ color: hasReal ? '#4caf50' : '#ff9800' }}>
-                {hasReal ? '● Live (hardware)' : '● Triggered (simulation)'}
+            ? <span style={{ color: hasRealV ? '#4caf50' : '#ff9800' }}>
+                {hasRealV ? '&#9679; Live (hardware)' : '&#9679; Triggered (simulation)'}
               </span>
-            : <span style={{ color:'#ef5350' }}>● Awaiting signal</span>}
+            : <span style={{ color: '#ef5350' }}>&#9679; Awaiting signal</span>}
         </div>
       </div>
 
-      <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0.6}}`}</style>
+      {/* CURRENT oscilloscope */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative',
+                    background: '#050a14', borderRadius: 10,
+                    border: '1.5px solid rgba(102,187,106,0.22)', overflow: 'hidden' }}>
+        <canvas ref={iCanvasRef} style={{ width: '100%', height: '100%', display: 'block' }}/>
+        <div style={{ position: 'absolute', bottom: 8, left: 10,
+                      display: 'flex', gap: 14, fontSize: 11,
+                      fontFamily: 'Courier New,monospace', fontWeight: 600,
+                      background: 'rgba(5,10,20,0.75)', padding: '3px 10px', borderRadius: 6 }}>
+          <span style={{ color: '#66bb6a' }}>&#8212;&#8212; Current (auto-scale amplified)</span>
+          {current > 0.001
+            ? <span style={{ color: hasRealI ? '#4caf50' : '#ff9800' }}>
+                {hasRealI ? '&#9679; Live (hardware)' : '&#9679; Triggered (simulation)'}
+              </span>
+            : <span style={{ color: '#ef5350' }}>&#9679; No signal</span>}
+        </div>
+      </div>
+
+      <style>{\`@keyframes blink{0%,100%{opacity:1}50%{opacity:0.6}}\`}</style>
     </div>
   )
 }
+
 
 // ── FFTOscilloscope ───────────────────────────────────────────────────────────
 function buildSpectrum(pf, f0) {
