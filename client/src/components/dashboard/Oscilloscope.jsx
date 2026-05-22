@@ -15,6 +15,35 @@ function adcToNorm(samples) {
   return centred.map(s => s / peak)
 }
 
+// ── Software low-pass filter (moving average) ────────────────────────────────
+// Reduces high-frequency noise from ACS712-30A at low currents.
+// windowSize: larger = smoother but less sharp edges.
+// At low currents (< 3A on 30A sensor) use a larger window (11-15).
+// At higher currents the noise is naturally lower, use smaller window (3-5).
+function lowPassFilter(samples, windowSize = 11) {
+  if (!samples || samples.length < 2) return samples
+  const half = Math.floor(windowSize / 2)
+  return samples.map((_, i) => {
+    let sum = 0, count = 0
+    for (let j = Math.max(0, i - half); j <= Math.min(samples.length - 1, i + half); j++) {
+      sum += samples[j]; count++
+    }
+    return sum / count
+  })
+}
+
+// Adaptive window: bigger smoothing at low currents, less at high currents
+function adaptiveFilter(samples, currentRms) {
+  if (!samples || samples.length < 2) return samples
+  let windowSize
+  if      (currentRms < 1)  windowSize = 15
+  else if (currentRms < 3)  windowSize = 11
+  else if (currentRms < 8)  windowSize = 7
+  else if (currentRms < 15) windowSize = 5
+  else                       windowSize = 3
+  return lowPassFilter(samples, windowSize)
+}
+
 // Fixed full-scale references — amplitude changes clearly visible
 const V_FULL_SCALE = 350   // peak volts  (covers 250 V RMS)
 const I_FULL_SCALE = 50    // peak amps   (covers 30 A RMS)
@@ -84,7 +113,17 @@ export function DualOscilloscope({
   }, [powerFactor])
 
   const normV = useMemo(() => adcToNorm(voltageBuffer), [voltageBuffer])
-  const normI = useMemo(() => adcToNorm(currentBuffer), [currentBuffer])
+
+  // ── Apply adaptive low-pass filter to current buffer before normalising ───
+  // This smooths out ACS712-30A noise at low currents without distorting
+  // the waveform at higher currents where the sensor performs well.
+  const filteredCurrentBuffer = useMemo(() => {
+    if (!currentBuffer || currentBuffer.length < 2) return currentBuffer
+    return adaptiveFilter(currentBuffer, current || 0)
+  }, [currentBuffer, current])
+
+  const normI = useMemo(() => adcToNorm(filteredCurrentBuffer), [filteredCurrentBuffer])
+
   const hasRealV = normV.length >= 10
   const hasRealI = normI.length >= 10
 
@@ -179,8 +218,6 @@ export function DualOscilloscope({
   }, [voltage, frequency, powerFactor, phiDeg, hasRealV, normV])
 
   // ── Draw CURRENT canvas ────────────────────────────────────────────────────
-  // AMPLIFIED scale: uses actual peak of the current signal so even tiny
-  // currents (0.01A) fill the full canvas height visibly
   const drawI = useCallback(() => {
     const canvas = iCanvasRef.current; if (!canvas) return
     const { w: W, h: H } = getCanvasSize(canvas); if (W < 10 || H < 10) return
@@ -214,12 +251,9 @@ export function DualOscilloscope({
 
     const iPeak = current * Math.SQRT2
     const midY  = H / 2
-    // Reduced Y scale — waveform occupies ~44% of canvas height
-    // Keeps amplitude visually proportional to actual current magnitude
     const halfH = H * 0.22
 
     if (hasRealI) {
-      // normI is already ±1 normalised — always fills the screen
       drawSmooth(ctx, normI, '#66bb6a', W, midY, halfH)
     } else {
       const CYCLES = 3, N = 400
@@ -229,43 +263,46 @@ export function DualOscilloscope({
       drawSmooth(ctx, iSamples, '#66bb6a', W, midY, halfH)
     }
 
-    // Info labels — show REAL amplitude values clearly
+    // Info labels
     const fs = Math.max(10, Math.min(13, W * 0.018))
+
+    // Show filter window size so it's visible in UI
+    let winLabel
+    if      (current < 1)  winLabel = 'filter×15'
+    else if (current < 3)  winLabel = 'filter×11'
+    else if (current < 8)  winLabel = 'filter×7'
+    else if (current < 15) winLabel = 'filter×5'
+    else                   winLabel = 'filter×3'
+
     ctx.font = `bold ${fs}px Arial`; ctx.textBaseline = 'top'; ctx.textAlign = 'left'
     ctx.fillStyle = '#66bb6a'
     ctx.fillText(`I_rms = ${current.toFixed(4)} A     I_peak = ${iPeak.toFixed(4)} A     ACS712-30A  66 mV/A`, 8, 6)
-    // Scale annotation: tells user the actual range displayed
     ctx.fillStyle = 'rgba(102,187,106,0.55)'; ctx.textAlign = 'right'
     ctx.font = `${Math.max(9, fs-2)}px Arial`
-    ctx.fillText(`Auto-scale ±${iPeak.toFixed(4)} A (full screen)`, W - 6, 6)
+    ctx.fillText(`Auto-scale ±${iPeak.toFixed(4)} A (full screen)  [SW ${winLabel}]`, W - 6, 6)
     ctx.fillStyle = hasRealI ? 'rgba(76,175,80,0.8)' : 'rgba(255,183,77,0.7)'
     ctx.font = `bold ${Math.max(9, fs-2)}px Arial`
     ctx.textBaseline = 'bottom'
     ctx.fillText(hasRealI ? '● REAL  amplified scale' : '● TRIGGERED', W - 6, H - 6)
 
-    // Y-axis scale labels on every grid division
-    // Each division = iPeak / 5 amps  (10 divisions total, ±5 divisions from centre)
-    const divCount = 5          // divisions above and below zero
+    // Y-axis scale labels
+    const divCount = 5
     const ampsPerDiv = iPeak / divCount
     ctx.font = `${Math.max(8, fs-2)}px 'Courier New',monospace`
     ctx.textAlign = 'right'
     for (let div = -divCount; div <= divCount; div++) {
       const yPos   = midY - (div / divCount) * halfH
       const aValue = ampsPerDiv * div
-      // highlight 0A line
       ctx.fillStyle = div === 0
         ? 'rgba(102,187,106,0.85)'
         : 'rgba(102,187,106,0.40)'
       ctx.textBaseline = 'middle'
-      // only label every other division to avoid crowding
       if (div % 1 === 0) {
         const label = div === 0 ? '0 A' : `${aValue >= 0 ? '+' : ''}${aValue.toFixed(3)} A`
         ctx.fillText(label, W - 6, yPos)
       }
     }
 
-    // Box behind labels so they are readable over the waveform
-    // (drawn before labels — we redraw labels on top)
     // Peak annotation lines
     ctx.strokeStyle = 'rgba(102,187,106,0.18)'
     ctx.lineWidth = 0.7; ctx.setLineDash([3, 5])
@@ -364,7 +401,7 @@ export function DualOscilloscope({
         </div>
       </div>
 
-   <style>{"@keyframes blink{0%,100%{opacity:1}50%{opacity:0.6}}"}</style>
+      <style>{"@keyframes blink{0%,100%{opacity:1}50%{opacity:0.6}}"}</style>
     </div>
   )
 }
