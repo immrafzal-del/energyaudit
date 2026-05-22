@@ -364,7 +364,7 @@ export function DualOscilloscope({
         </div>
       </div>
 
-      <style>{\`@keyframes blink{0%,100%{opacity:1}50%{opacity:0.6}}\`}</style>
+     <style>{"@keyframes blink{0%,100%{opacity:1}50%{opacity:0.6}}"}</style>
     </div>
   )
 }
