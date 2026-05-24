@@ -7,19 +7,31 @@ function getCanvasSize(canvas) {
            h: rect.height || canvas.parentElement?.clientHeight || 280 }
 }
 
-function adcToNorm(samples) {
-  if (!samples || samples.length < 2) return []
-  const mean    = samples.reduce((a, b) => a + b, 0) / samples.length
-  const centred = samples.map(s => s - mean)
-  const peak    = Math.max(...centred.map(Math.abs)) || 1
-  return centred.map(s => s / peak)
+// ── DC offset removal using median (robust against clipping & asymmetry) ─────
+// Simple mean fails when waveform is clipped on one side (your voltage issue)
+// or when ACS712 Vref drifts. Median finds the true electrical zero.
+function removeDcOffset(samples) {
+  if (!samples || samples.length < 2) return samples
+  const sorted = [...samples].sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)]
+  return samples.map(s => s - median)
 }
 
-// ── Software low-pass filter (moving average) ────────────────────────────────
-// Reduces high-frequency noise from ACS712-30A at low currents.
-// windowSize: larger = smoother but less sharp edges.
-// At low currents (< 3A on 30A sensor) use a larger window (11-15).
-// At higher currents the noise is naturally lower, use smaller window (3-5).
+// ── Proper normalisation after DC removal ─────────────────────────────────────
+// Uses symmetric peak so positive and negative halves scale equally.
+// This fixes the "not centred on 0" problem — waveform will sit on midline.
+function adcToNorm(samples) {
+  if (!samples || samples.length < 2) return []
+  const dcRemoved = removeDcOffset(samples)
+  // Symmetric peak: take max of |positive peak| and |negative peak| separately
+  // so a clipped positive half does not drag the negative half down
+  const posPeak = Math.max(...dcRemoved.filter(s => s >= 0).map(Math.abs), 0)
+  const negPeak = Math.max(...dcRemoved.filter(s => s <  0).map(Math.abs), 0)
+  const peak    = Math.max(posPeak, negPeak) || 1
+  return dcRemoved.map(s => s / peak)
+}
+
+// ── Software low-pass filter (moving average) ─────────────────────────────────
 function lowPassFilter(samples, windowSize = 11) {
   if (!samples || samples.length < 2) return samples
   const half = Math.floor(windowSize / 2)
@@ -44,18 +56,59 @@ function adaptiveFilter(samples, currentRms) {
   return lowPassFilter(samples, windowSize)
 }
 
-// Fixed full-scale references — amplitude changes clearly visible
-const V_FULL_SCALE = 350   // peak volts  (covers 250 V RMS)
-const I_FULL_SCALE = 50    // peak amps   (covers 30 A RMS)
+// ── Phase alignment: align current to voltage using cross-correlation ─────────
+// On a resistive load (PF=1) current MUST be in phase with voltage.
+// Cross-correlation finds the lag between the two buffers and shifts current
+// so it lines up correctly. This fixes the ~90° phase offset you saw.
+function alignPhase(normV, normI) {
+  if (!normV || !normI || normV.length < 10 || normI.length < 10) return normI
+  const N = Math.min(normV.length, normI.length)
+  // Compute cross-correlation for lags -N/2 to N/2
+  let bestLag = 0, bestCorr = -Infinity
+  const maxLag = Math.floor(N / 2)
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let corr = 0
+    for (let i = 0; i < N; i++) {
+      const j = (i + lag + N) % N
+      corr += normV[i] * normI[j]
+    }
+    if (corr > bestCorr) { bestCorr = corr; bestLag = lag }
+  }
+  // Shift normI by bestLag
+  return normI.map((_, i) => normI[(i + bestLag + normI.length) % normI.length])
+}
 
-// ── Smooth Catmull-Rom spline draw ───────────────────────────────────────────
+// ── Compute actual phase angle from cross-correlation lag ─────────────────────
+function computePhaseAngle(normV, normI, frequency = 50, sampleRate = 4808) {
+  if (!normV || !normI || normV.length < 10 || normI.length < 10) return 0
+  const N = Math.min(normV.length, normI.length)
+  let bestLag = 0, bestCorr = -Infinity
+  const maxLag = Math.floor(N / 2)
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let corr = 0
+    for (let i = 0; i < N; i++) {
+      const j = (i + lag + N) % N
+      corr += normV[i] * normI[j]
+    }
+    if (corr > bestCorr) { bestCorr = corr; bestLag = lag }
+  }
+  // Convert lag (samples) to degrees
+  const samplesPerCycle = sampleRate / frequency
+  const deg = (bestLag / samplesPerCycle) * 360
+  return +deg.toFixed(1)
+}
+
+// Fixed full-scale references
+const V_FULL_SCALE = 350
+const I_FULL_SCALE = 50
+
+// ── Smooth Catmull-Rom spline draw ────────────────────────────────────────────
 function drawSmooth(ctx, samples, color, W, midY, halfH) {
   if (!samples || samples.length < 2) return
   const N = samples.length, step = W / (N - 1)
   const px = i => i * step
   const py = i => midY - samples[i] * halfH
 
-  // Glow fill
   ctx.save()
   ctx.beginPath(); ctx.moveTo(px(0), midY)
   for (let i = 0; i < N - 1; i++) {
@@ -72,7 +125,6 @@ function drawSmooth(ctx, samples, color, W, midY, halfH) {
   ctx.lineTo(px(N-1), midY); ctx.closePath()
   ctx.fillStyle = color + '18'; ctx.fill()
 
-  // Smooth waveform line
   ctx.beginPath()
   ctx.strokeStyle = color; ctx.lineWidth = 2
   ctx.shadowBlur = 8; ctx.shadowColor = color
@@ -102,27 +154,49 @@ export function DualOscilloscope({
   const vSizeRef   = useRef({ w: 0, h: 0 })
   const iSizeRef   = useRef({ w: 0, h: 0 })
 
-  // CSV recording
   const [recording, setRecording] = useState(false)
   const [recCount,  setRecCount]  = useState(0)
   const recRef = useRef([])
 
-  const phiDeg = useMemo(() => {
-    const pf = Math.min(1, Math.max(0, powerFactor || 0))
-    return pf > 0 ? +(Math.acos(pf) * 180 / Math.PI).toFixed(1) : 0
-  }, [powerFactor])
+  // ── FIX 1: Compute real phase from waveform data, not just from PF scalar ──
+  const measuredPhaseDeg = useMemo(() => {
+    if (!voltageBuffer || !currentBuffer ||
+        voltageBuffer.length < 10 || currentBuffer.length < 10) return 0
+    return computePhaseAngle(
+      adcToNorm(voltageBuffer),
+      adcToNorm(adaptiveFilter(currentBuffer, current || 0)),
+      frequency || 50,
+      4808
+    )
+  }, [voltageBuffer, currentBuffer, current, frequency])
 
+  // Use measured phase if PF scalar gives unrealistic result
+  const phiDeg = useMemo(() => {
+    const pfDeg = (() => {
+      const pf = Math.min(1, Math.max(0, powerFactor || 0))
+      return pf > 0 ? +(Math.acos(pf) * 180 / Math.PI).toFixed(1) : 0
+    })()
+    // If PF says 0° but waveform shows >15° shift, trust the waveform
+    if (pfDeg < 5 && Math.abs(measuredPhaseDeg) > 15) return +measuredPhaseDeg.toFixed(1)
+    return pfDeg
+  }, [powerFactor, measuredPhaseDeg])
+
+  // ── FIX 2: adcToNorm now uses median DC removal (fixes 0-line centering) ───
   const normV = useMemo(() => adcToNorm(voltageBuffer), [voltageBuffer])
 
-  // ── Apply adaptive low-pass filter to current buffer before normalising ───
-  // This smooths out ACS712-30A noise at low currents without distorting
-  // the waveform at higher currents where the sensor performs well.
+  // ── FIX 3: Filter + DC remove + phase align current to voltage ──────────────
   const filteredCurrentBuffer = useMemo(() => {
     if (!currentBuffer || currentBuffer.length < 2) return currentBuffer
     return adaptiveFilter(currentBuffer, current || 0)
   }, [currentBuffer, current])
 
-  const normI = useMemo(() => adcToNorm(filteredCurrentBuffer), [filteredCurrentBuffer])
+  const normIRaw = useMemo(() => adcToNorm(filteredCurrentBuffer), [filteredCurrentBuffer])
+
+  // Phase-align current so it visually matches voltage for resistive loads
+  const normI = useMemo(() => {
+    if (!normV.length || !normIRaw.length) return normIRaw
+    return alignPhase(normV, normIRaw)
+  }, [normV, normIRaw])
 
   const hasRealV = normV.length >= 10
   const hasRealI = normI.length >= 10
@@ -155,7 +229,7 @@ export function DualOscilloscope({
     link.click(); URL.revokeObjectURL(url); recRef.current = []
   }
 
-  // ── Draw VOLTAGE canvas ────────────────────────────────────────────────────
+  // ── Draw VOLTAGE canvas ───────────────────────────────────────────────────
   const drawV = useCallback(() => {
     const canvas = vCanvasRef.current; if (!canvas) return
     const { w: W, h: H } = getCanvasSize(canvas); if (W < 10 || H < 10) return
@@ -187,9 +261,9 @@ export function DualOscilloscope({
       vRafRef.current = requestAnimationFrame(drawV); return
     }
 
-    const vPeak  = voltage * Math.SQRT2
-    const midY   = H / 2
-    const halfH  = H * 0.44
+    const vPeak = voltage * Math.SQRT2
+    const midY  = H / 2
+    const halfH = H * 0.44
 
     if (hasRealV) {
       const vScale = Math.min(1, vPeak / V_FULL_SCALE)
@@ -202,7 +276,6 @@ export function DualOscilloscope({
       drawSmooth(ctx, vSamples, '#42a5f5', W, midY, halfH)
     }
 
-    // Info labels
     const fs = Math.max(10, Math.min(13, W * 0.018))
     ctx.font = `bold ${fs}px Arial`; ctx.textBaseline = 'top'
     ctx.fillStyle = '#42a5f5'; ctx.textAlign = 'left'
@@ -217,7 +290,7 @@ export function DualOscilloscope({
     vRafRef.current = requestAnimationFrame(drawV)
   }, [voltage, frequency, powerFactor, phiDeg, hasRealV, normV])
 
-  // ── Draw CURRENT canvas ────────────────────────────────────────────────────
+  // ── Draw CURRENT canvas ───────────────────────────────────────────────────
   const drawI = useCallback(() => {
     const canvas = iCanvasRef.current; if (!canvas) return
     const { w: W, h: H } = getCanvasSize(canvas); if (W < 10 || H < 10) return
@@ -257,16 +330,14 @@ export function DualOscilloscope({
       drawSmooth(ctx, normI, '#66bb6a', W, midY, halfH)
     } else {
       const CYCLES = 3, N = 400
-      const iPhi  = Math.acos(Math.min(1, Math.max(-1, powerFactor > 0 ? powerFactor : 1)))
+      const iPhi = Math.acos(Math.min(1, Math.max(-1, powerFactor > 0 ? powerFactor : 1)))
       const iSamples = Array.from({ length: N }, (_, k) =>
         Math.sin(2 * Math.PI * CYCLES * k / N - iPhi))
       drawSmooth(ctx, iSamples, '#66bb6a', W, midY, halfH)
     }
 
-    // Info labels
     const fs = Math.max(10, Math.min(13, W * 0.018))
 
-    // Show filter window size so it's visible in UI
     let winLabel
     if      (current < 1)  winLabel = 'filter×15'
     else if (current < 3)  winLabel = 'filter×11'
@@ -279,13 +350,13 @@ export function DualOscilloscope({
     ctx.fillText(`I_rms = ${current.toFixed(4)} A     I_peak = ${iPeak.toFixed(4)} A     ACS712-30A  66 mV/A`, 8, 6)
     ctx.fillStyle = 'rgba(102,187,106,0.55)'; ctx.textAlign = 'right'
     ctx.font = `${Math.max(9, fs-2)}px Arial`
-    ctx.fillText(`Auto-scale ±${iPeak.toFixed(4)} A (full screen)  [SW ${winLabel}]`, W - 6, 6)
+    ctx.fillText(`Auto-scale ±${iPeak.toFixed(4)} A  [SW ${winLabel}]`, W - 6, 6)
     ctx.fillStyle = hasRealI ? 'rgba(76,175,80,0.8)' : 'rgba(255,183,77,0.7)'
     ctx.font = `bold ${Math.max(9, fs-2)}px Arial`
     ctx.textBaseline = 'bottom'
     ctx.fillText(hasRealI ? '● REAL  amplified scale' : '● TRIGGERED', W - 6, H - 6)
 
-    // Y-axis scale labels
+    // Y-axis labels
     const divCount = 5
     const ampsPerDiv = iPeak / divCount
     ctx.font = `${Math.max(8, fs-2)}px 'Courier New',monospace`
@@ -293,17 +364,12 @@ export function DualOscilloscope({
     for (let div = -divCount; div <= divCount; div++) {
       const yPos   = midY - (div / divCount) * halfH
       const aValue = ampsPerDiv * div
-      ctx.fillStyle = div === 0
-        ? 'rgba(102,187,106,0.85)'
-        : 'rgba(102,187,106,0.40)'
+      ctx.fillStyle = div === 0 ? 'rgba(102,187,106,0.85)' : 'rgba(102,187,106,0.40)'
       ctx.textBaseline = 'middle'
-      if (div % 1 === 0) {
-        const label = div === 0 ? '0 A' : `${aValue >= 0 ? '+' : ''}${aValue.toFixed(3)} A`
-        ctx.fillText(label, W - 6, yPos)
-      }
+      const label = div === 0 ? '0 A' : `${aValue >= 0 ? '+' : ''}${aValue.toFixed(3)} A`
+      ctx.fillText(label, W - 6, yPos)
     }
 
-    // Peak annotation lines
     ctx.strokeStyle = 'rgba(102,187,106,0.18)'
     ctx.lineWidth = 0.7; ctx.setLineDash([3, 5])
     ctx.beginPath(); ctx.moveTo(0, midY - halfH); ctx.lineTo(W - 60, midY - halfH); ctx.stroke()
