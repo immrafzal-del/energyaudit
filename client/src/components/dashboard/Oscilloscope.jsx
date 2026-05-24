@@ -124,12 +124,14 @@ export function DualOscilloscope({
   // Voltage: DC offset via midpoint, then normalise
   const normV = useMemo(() => adcToNorm(voltageBuffer), [voltageBuffer])
 
-  // Current: filter first (noise reduction), then DC offset via midpoint,
-  // then normalise. No phase shift applied — display as-is from hardware.
+  // Current: filter first (noise reduction), then invert (ACS712 wired
+  // in reverse — current flows opposite to marked direction, flipping the
+  // waveform), then DC offset via midpoint, then normalise.
   const normI = useMemo(() => {
     if (!currentBuffer || currentBuffer.length < 2) return []
-    const filtered = adaptiveFilter(currentBuffer, current || 0)
-    return adcToNorm(filtered)
+    const filtered  = adaptiveFilter(currentBuffer, current || 0)
+    const inverted  = filtered.map(s => -s)   // flip polarity
+    return adcToNorm(inverted)
   }, [currentBuffer, current])
 
   const hasRealV = normV.length >= 10
